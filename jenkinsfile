@@ -2,52 +2,186 @@ pipeline {
 
     agent any
 
+
+    environment {
+
+        IMAGE_NAME = "jenkins-cicd-demo"
+
+        CONTAINER_NAME = "node-app"
+
+    }
+
+
     stages {
 
-        stage('Clone') {
+
+        stage('Checkout Code') {
+
             steps {
+
+                echo "Checking out source code"
+
                 checkout scm
+
             }
+
         }
+
+
 
         stage('Install Dependencies') {
+
             steps {
+
+                echo "Installing npm dependencies"
+
                 sh 'npm install'
+
             }
+
         }
 
-        stage('Test') {
+
+
+        stage('SonarQube Analysis') {
+
             steps {
+
+                echo "Running SonarQube Security Scan"
+
+
+                withSonarQubeEnv('sonarqube') {
+
+                    sh '''
+
+                    sonar-scanner \
+                    -Dsonar.projectKey=jenkins-cicd-demo \
+                    -Dsonar.projectName=jenkins-cicd-demo \
+                    -Dsonar.sources=. \
+                    -Dsonar.exclusions=node_modules/**
+
+                    '''
+
+                }
+
+            }
+
+        }
+
+
+
+        stage('Run Tests') {
+
+            steps {
+
+                echo "Running application tests"
+
                 sh 'npm test'
+
             }
+
         }
 
-        stage('Docker Build') {
-            steps {
-                sh 'docker build -t jenkins-cicd-demo .'
-            }
-        }
 
-        stage('Deploy') {
+
+        stage('Build Docker Image') {
+
             steps {
+
+                echo "Building Docker Image"
+
                 sh '''
-                docker rm -f node-app || true
-                docker run -d \
-                --name node-app \
-                -p 3000:3000 \
-                jenkins-cicd-demo
+
+                docker build \
+                -t ${IMAGE_NAME} .
+
                 '''
+
             }
+
         }
+
+
+
+        stage('Trivy Security Scan') {
+
+            steps {
+
+                echo "Scanning Docker Image using Trivy"
+
+
+                sh '''
+
+                trivy image \
+                --severity HIGH,CRITICAL \
+                ${IMAGE_NAME}
+
+                '''
+
+            }
+
+        }
+
+
+
+        stage('Deploy Application') {
+
+            steps {
+
+                echo "Deploying Application"
+
+
+                sh '''
+
+                docker rm -f ${CONTAINER_NAME} || true
+
+
+                docker run -d \
+                --name ${CONTAINER_NAME} \
+                -p 3000:3000 \
+                ${IMAGE_NAME}
+
+
+                '''
+
+            }
+
+        }
+
     }
+
+
 
     post {
+
+
         success {
+
+            echo "=============================="
+
             echo "Deployment Successful"
+
+            echo "Application running on port 3000"
+
+            echo "=============================="
+
         }
 
+
+
         failure {
-            echo "Deployment Failed"
+
+            echo "=============================="
+
+            echo "Pipeline Failed"
+
+            echo "Check Console Output"
+
+            echo "=============================="
+
         }
+
+
     }
+
 }
